@@ -2,13 +2,52 @@
 
 import { useState } from 'react'
 
-type ActionType = 'summary' | 'thesis' | 'telegram'
+type ActionType = 'summary' | 'thesis' | 'telegram' | 'parse'
+
+interface ParseResult {
+  date: string | null
+  title: string | null
+  content: string | null
+}
 
 export default function Home() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState('')
   const [activeAction, setActiveAction] = useState<ActionType | null>(null)
+
+  const handleParse = async () => {
+    if (!url.trim()) {
+      alert('Пожалуйста, введите URL статьи')
+      return
+    }
+
+    setLoading(true)
+    setActiveAction('parse')
+    setResult('')
+
+    try {
+      const response = await fetch('/api/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url.trim() }),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || 'Ошибка при парсинге статьи')
+      }
+
+      const data: ParseResult = await response.json()
+      setResult(JSON.stringify(data, null, 2))
+    } catch (error) {
+      setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleAction = async (action: ActionType) => {
     if (!url.trim()) {
@@ -56,6 +95,21 @@ export default function Home() {
 
         {/* Кнопки действий */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
+          <div className="mb-4">
+            <button
+              onClick={handleParse}
+              disabled={loading || !url.trim()}
+              className={`w-full px-6 py-3 rounded-lg font-medium transition-all ${
+                loading || !url.trim()
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : activeAction === 'parse'
+                  ? 'bg-green-600 text-white shadow-lg'
+                  : 'bg-green-500 text-white hover:bg-green-600 hover:shadow-md'
+              }`}
+            >
+              Парсить статью
+            </button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <button
               onClick={() => handleAction('summary')}
@@ -111,7 +165,7 @@ export default function Home() {
                 <span className="ml-4 text-gray-600">Генерация результата...</span>
               </div>
             ) : result ? (
-              <div className="text-gray-800 whitespace-pre-wrap">{result}</div>
+              <div className="text-gray-800 whitespace-pre-wrap font-mono text-sm overflow-auto max-h-[500px]">{result}</div>
             ) : (
               <div className="text-gray-400 text-center py-8">
                 Введите URL статьи и выберите действие
