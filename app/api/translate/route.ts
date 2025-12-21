@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 const MODELS = [
   'deepseek/deepseek-r1:free',
   'deepseek/deepseek-chat:free',
+  'Xiaomi/MiMo-V2-Flash:free',
 ]
 
 async function tryTranslate(
