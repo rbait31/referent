@@ -12,11 +12,12 @@ async function tryTelegramPost(
   content: string,
   title: string | null,
   date: string | null,
+  url: string | null,
   model: string,
   retryDelay = 1000
 ): Promise<{ success: boolean; post?: string; error?: string }> {
   try {
-    let prompt = 'Создай пост для Telegram на русском языке на основе этой статьи. Пост должен быть кратким, информативным и привлекательным. Используй эмодзи для оформления. Включи основные идеи и призыв к действию.\n\n'
+    let prompt = 'Создай пост для Telegram на русском языке на основе этой статьи. Пост должен быть кратким, информативным и привлекательным. Используй эмодзи для оформления. Включи основные идеи и призыв к действию. В конце поста обязательно добавь ссылку на источник статьи.\n\n'
     
     if (title) {
       prompt += `Заголовок статьи: ${title}\n\n`
@@ -27,6 +28,10 @@ async function tryTelegramPost(
     }
     
     prompt += `Содержание статьи:\n${content}`
+    
+    if (url) {
+      prompt += `\n\nСсылка на источник: ${url}`
+    }
 
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
@@ -85,7 +90,7 @@ async function tryTelegramPost(
 
 export async function POST(request: NextRequest) {
   try {
-    const { content, title, date } = await request.json()
+    const { content, title, date, url } = await request.json()
 
     if (!content || typeof content !== 'string') {
       return NextResponse.json(
@@ -105,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     // Пробуем модели по очереди
     for (const model of MODELS) {
-      const result = await tryTelegramPost(apiKey, content, title || null, date || null, model)
+      const result = await tryTelegramPost(apiKey, content, title || null, date || null, url || null, model)
       
       if (result.success && result.post) {
         return NextResponse.json({ post: result.post })

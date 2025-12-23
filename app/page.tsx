@@ -121,13 +121,12 @@ export default function Home() {
           break
         case 'telegram':
           apiEndpoint = '/api/telegram'
-          // Для telegram передаем также title и date если есть
-          if (articleData) {
-            requestBody = {
-              content: articleContent,
-              title: articleData.title,
-              date: articleData.date,
-            }
+          // Для telegram передаем также title, date и url
+          requestBody = {
+            content: articleContent,
+            title: articleData?.title || null,
+            date: articleData?.date || null,
+            url: url.trim(),
           }
           break
         default:
