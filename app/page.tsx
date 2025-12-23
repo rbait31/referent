@@ -51,102 +51,124 @@ export default function Home() {
     }
   }
 
+  // Вспомогательная функция для парсинга статьи
+  const parseArticle = async (): Promise<ParseResult> => {
+    const parseResponse = await fetch('/api/parse', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url: url.trim() }),
+    })
+
+    if (!parseResponse.ok) {
+      const error = await parseResponse.json()
+      throw new Error(error.error || 'Ошибка при парсинге статьи')
+    }
+
+    const parseData: ParseResult = await parseResponse.json()
+    setParsedArticle(parseData)
+
+    if (!parseData.content) {
+      throw new Error('Не удалось извлечь контент статьи')
+    }
+
+    return parseData
+  }
+
   const handleAction = async (action: ActionType) => {
     if (!url.trim()) {
       alert('Пожалуйста, введите URL статьи')
       return
     }
 
-    // Для перевода нужен распарсенный контент
-    if (action === 'translate') {
-      // Если статья еще не распарсена, парсим её
-      if (!parsedArticle?.content) {
-        setLoading(true)
-        try {
-          const parseResponse = await fetch('/api/parse', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ url: url.trim() }),
-          })
+    // Для всех действий нужен распарсенный контент
+    let articleContent = parsedArticle?.content
+    let articleData = parsedArticle
 
-          if (!parseResponse.ok) {
-            throw new Error('Ошибка при парсинге статьи')
-          }
-
-          const parseData: ParseResult = await parseResponse.json()
-          setParsedArticle(parseData)
-
-          if (!parseData.content) {
-            throw new Error('Не удалось извлечь контент статьи')
-          }
-
-          // Теперь переводим
-          setActiveAction('translate')
-          setResult('')
-
-          const translateResponse = await fetch('/api/translate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ content: parseData.content }),
-          })
-
-          if (!translateResponse.ok) {
-            const error = await translateResponse.json()
-            throw new Error(error.error || 'Ошибка при переводе статьи')
-          }
-
-          const translateData = await translateResponse.json()
-          setResult(translateData.translation || 'Перевод не получен')
-        } catch (error) {
-          setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
-        } finally {
-          setLoading(false)
-        }
-      } else {
-        // Используем уже распарсенный контент
-        setLoading(true)
-        setActiveAction('translate')
-        setResult('')
-
-        try {
-          const translateResponse = await fetch('/api/translate', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ content: parsedArticle.content }),
-          })
-
-          if (!translateResponse.ok) {
-            const error = await translateResponse.json()
-            throw new Error(error.error || 'Ошибка при переводе статьи')
-          }
-
-          const translateData = await translateResponse.json()
-          setResult(translateData.translation || 'Перевод не получен')
-        } catch (error) {
-          setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
-        } finally {
-          setLoading(false)
-        }
+    // Если статья еще не распарсена, парсим её
+    if (!articleContent) {
+      setLoading(true)
+      try {
+        articleData = await parseArticle()
+        articleContent = articleData.content
+      } catch (error) {
+        setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+        setLoading(false)
+        return
       }
-      return
     }
 
+    // Теперь выполняем нужное действие
     setLoading(true)
     setActiveAction(action)
     setResult('')
 
-    // Здесь будет логика вызова API для других действий
-    // Пока что просто имитация загрузки
-    setTimeout(() => {
-      setResult(`Результат для действия "${action}" будет здесь...`)
+    try {
+      let apiEndpoint = ''
+      let requestBody: any = { content: articleContent }
+
+      // Определяем эндпоинт и тело запроса в зависимости от действия
+      switch (action) {
+        case 'translate':
+          apiEndpoint = '/api/translate'
+          break
+        case 'summary':
+          apiEndpoint = '/api/summary'
+          break
+        case 'thesis':
+          apiEndpoint = '/api/thesis'
+          break
+        case 'telegram':
+          apiEndpoint = '/api/telegram'
+          // Для telegram передаем также title и date если есть
+          if (articleData) {
+            requestBody = {
+              content: articleContent,
+              title: articleData.title,
+              date: articleData.date,
+            }
+          }
+          break
+        default:
+          throw new Error('Неизвестное действие')
+      }
+
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      })
+
+      if (!response.ok) {
+        const error = await response.json()
+        throw new Error(error.error || `Ошибка при выполнении действия "${action}"`)
+      }
+
+      const data = await response.json()
+
+      // Извлекаем результат в зависимости от типа ответа
+      let resultText = ''
+      if (data.translation) {
+        resultText = data.translation
+      } else if (data.summary) {
+        resultText = data.summary
+      } else if (data.thesis) {
+        resultText = data.thesis
+      } else if (data.post) {
+        resultText = data.post
+      } else {
+        resultText = 'Результат не получен'
+      }
+
+      setResult(resultText)
+    } catch (error) {
+      setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+    } finally {
       setLoading(false)
-    }, 1000)
+    }
   }
 
   return (
