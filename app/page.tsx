@@ -189,7 +189,14 @@ export default function Home() {
             id="url"
             type="url"
             value={url}
-            onChange={(e) => setUrl(e.target.value)}
+            onChange={(e) => {
+              const newUrl = e.target.value
+              setUrl(newUrl)
+            }}
+            onInput={(e) => {
+              const newUrl = (e.target as HTMLInputElement).value
+              setUrl(newUrl)
+            }}
             placeholder="https://example.com/article"
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
             disabled={loading}
@@ -200,7 +207,10 @@ export default function Home() {
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <div className="mb-4">
             <button
-              onClick={handleParse}
+              onClick={(e) => {
+                e.preventDefault()
+                handleParse()
+              }}
               disabled={loading || !url.trim()}
               className={`w-full px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
@@ -209,6 +219,7 @@ export default function Home() {
                   ? 'bg-green-600 text-white shadow-lg'
                   : 'bg-green-500 text-white hover:bg-green-600 hover:shadow-md'
               }`}
+              type="button"
             >
               Парсить статью
             </button>
