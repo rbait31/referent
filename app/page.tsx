@@ -1,8 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
-import { AlertCircle } from 'lucide-react'
+import { AlertCircle, X, Copy, Check } from 'lucide-react'
 
 type ActionType = 'summary' | 'thesis' | 'telegram' | 'translate'
 
@@ -21,6 +21,54 @@ export default function Home() {
   const [activeAction, setActiveAction] = useState<ActionType | null>(null)
   const [parsedArticle, setParsedArticle] = useState<ParseResult | null>(null)
   const [error, setError] = useState<{ type: ErrorType; message: string } | null>(null)
+  const [copied, setCopied] = useState(false)
+  const resultRef = useRef<HTMLDivElement>(null)
+
+  // Функция для сброса всех состояний
+  const handleClear = () => {
+    setUrl('')
+    setResult('')
+    setError(null)
+    setActiveAction(null)
+    setParsedArticle(null)
+    setCopied(false)
+  }
+
+  // Функция для копирования результата в буфер обмена
+  const handleCopy = async () => {
+    if (!result) return
+
+    try {
+      await navigator.clipboard.writeText(result)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      // Fallback для старых браузеров
+      const textArea = document.createElement('textarea')
+      textArea.value = result
+      textArea.style.position = 'fixed'
+      textArea.style.opacity = '0'
+      document.body.appendChild(textArea)
+      textArea.select()
+      try {
+        document.execCommand('copy')
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      } catch (fallbackErr) {
+        console.error('Не удалось скопировать текст', fallbackErr)
+      }
+      document.body.removeChild(textArea)
+    }
+  }
+
+  // Автоматическая прокрутка к результатам после успешной генерации
+  useEffect(() => {
+    if (result && !loading && resultRef.current) {
+      setTimeout(() => {
+        resultRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 100)
+    }
+  }, [result, loading])
 
   // Функция для получения дружественного сообщения об ошибке
   const getErrorMessage = (error: unknown, response?: Response): string => {
@@ -251,9 +299,24 @@ export default function Home() {
 
         {/* Поле ввода URL */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <label htmlFor="url" className="block text-sm font-medium text-gray-700 mb-2">
-            URL англоязычной статьи
-          </label>
+          <div className="flex items-center justify-between mb-2">
+            <label htmlFor="url" className="block text-sm font-medium text-gray-700">
+              URL англоязычной статьи
+            </label>
+            <button
+              onClick={handleClear}
+              disabled={loading}
+              title="Очистить все поля и результаты"
+              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${
+                loading
+                  ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+              }`}
+            >
+              <X className="h-4 w-4" />
+              Очистить
+            </button>
+          </div>
           <input
             id="url"
             type="url"
@@ -377,10 +440,31 @@ export default function Home() {
         )}
 
         {/* Блок результата */}
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <h2 className="text-xl font-semibold text-gray-900 mb-4">
-            Результат
-          </h2>
+        <div ref={resultRef} className="bg-white rounded-lg shadow-md p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-gray-900">
+              Результат
+            </h2>
+            {result && !loading && (
+              <button
+                onClick={handleCopy}
+                title="Копировать результат"
+                className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium transition-all bg-gray-100 text-gray-700 hover:bg-gray-200"
+              >
+                {copied ? (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Скопировано
+                  </>
+                ) : (
+                  <>
+                    <Copy className="h-4 w-4" />
+                    Копировать
+                  </>
+                )}
+              </button>
+            )}
+          </div>
           <div className="min-h-[200px] p-4 bg-gray-50 rounded-lg border border-gray-200">
             {loading ? (
               <div className="flex items-center justify-center h-full">
