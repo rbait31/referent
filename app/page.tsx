@@ -288,18 +288,18 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <main className="min-h-screen bg-gray-50 py-6 sm:py-8 lg:py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-4xl font-bold text-center text-gray-900 mb-8">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-center text-gray-900 mb-4 sm:mb-6 lg:mb-8">
           Referent
         </h1>
-        <p className="text-center text-gray-600 mb-8">
+        <p className="text-center text-gray-600 text-sm sm:text-base mb-6 sm:mb-8 px-2">
           Анализ англоязычных статей с помощью AI
         </p>
 
         {/* Поле ввода URL */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="flex items-center justify-between mb-2">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-0 mb-2">
             <label htmlFor="url" className="block text-sm font-medium text-gray-700">
               URL англоязычной статьи
             </label>
@@ -307,14 +307,14 @@ export default function Home() {
               onClick={handleClear}
               disabled={loading}
               title="Очистить все поля и результаты"
-              className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium transition-all ${
+              className={`flex items-center justify-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium transition-all w-full sm:w-auto ${
                 loading
                   ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                   : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
               }`}
             >
               <X className="h-4 w-4" />
-              Очистить
+              <span>Очистить</span>
             </button>
           </div>
           <input
@@ -347,8 +347,8 @@ export default function Home() {
         </div>
 
         {/* Кнопки действий */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <button
               onClick={() => handleAction('translate')}
               disabled={loading || !url.trim()}
@@ -410,16 +410,16 @@ export default function Home() {
 
         {/* Блок ошибок */}
         {error && (
-          <Alert variant="destructive" className="mb-6">
+          <Alert variant="destructive" className="mb-4 sm:mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>Ошибка</AlertTitle>
-            <AlertDescription>{error.message}</AlertDescription>
+            <AlertDescription className="break-words">{error.message}</AlertDescription>
           </Alert>
         )}
 
         {/* Блок статуса процесса */}
         {loading && (
-          <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-md p-4 mb-6">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-md p-4 mb-4 sm:mb-6">
             <div className="flex items-center">
               <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-3"></div>
               <span className="text-sm text-blue-700">
@@ -440,41 +440,41 @@ export default function Home() {
         )}
 
         {/* Блок результата */}
-        <div ref={resultRef} className="bg-white rounded-lg shadow-md p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-semibold text-gray-900">
+        <div ref={resultRef} className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4">
+            <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
               Результат
             </h2>
             {result && !loading && (
               <button
                 onClick={handleCopy}
                 title="Копировать результат"
-                className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium transition-all bg-gray-100 text-gray-700 hover:bg-gray-200"
+                className="flex items-center justify-center gap-2 px-3 py-1.5 text-sm rounded-lg font-medium transition-all bg-gray-100 text-gray-700 hover:bg-gray-200 w-full sm:w-auto"
               >
                 {copied ? (
                   <>
                     <Check className="h-4 w-4" />
-                    Скопировано
+                    <span>Скопировано</span>
                   </>
                 ) : (
                   <>
                     <Copy className="h-4 w-4" />
-                    Копировать
+                    <span>Копировать</span>
                   </>
                 )}
               </button>
             )}
           </div>
-          <div className="min-h-[200px] p-4 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="min-h-[200px] p-3 sm:p-4 bg-gray-50 rounded-lg border border-gray-200">
             {loading ? (
-              <div className="flex items-center justify-center h-full">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
-                <span className="ml-4 text-gray-600">Генерация результата...</span>
+              <div className="flex flex-col sm:flex-row items-center justify-center h-full gap-3 sm:gap-4">
+                <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-500"></div>
+                <span className="text-sm sm:text-base text-gray-600">Генерация результата...</span>
               </div>
             ) : result ? (
-              <div className="text-gray-800 whitespace-pre-wrap font-mono text-sm overflow-auto max-h-[500px]">{result}</div>
+              <div className="text-gray-800 whitespace-pre-wrap font-mono text-xs sm:text-sm overflow-x-auto break-words max-h-[500px]">{result}</div>
             ) : (
-              <div className="text-gray-400 text-center py-8">
+              <div className="text-gray-400 text-center py-8 text-sm sm:text-base px-2">
                 Введите URL статьи и выберите действие
               </div>
             )}
