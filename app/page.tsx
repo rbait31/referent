@@ -163,10 +163,13 @@ export default function Home() {
               const newUrl = (e.target as HTMLInputElement).value
               setUrl(newUrl)
             }}
-            placeholder="https://example.com/article"
+            placeholder="Введите URL статьи, например: https://example.com/article"
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
             disabled={loading}
           />
+          <p className="mt-2 text-xs text-gray-500">
+            Укажите ссылку на англоязычную статью
+          </p>
         </div>
 
         {/* Кнопки действий */}
@@ -175,6 +178,7 @@ export default function Home() {
             <button
               onClick={() => handleAction('translate')}
               disabled={loading || !url.trim()}
+              title="Перевести статью на русский язык"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -188,6 +192,7 @@ export default function Home() {
             <button
               onClick={() => handleAction('summary')}
               disabled={loading || !url.trim()}
+              title="Получить краткое резюме статьи"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -201,6 +206,7 @@ export default function Home() {
             <button
               onClick={() => handleAction('thesis')}
               disabled={loading || !url.trim()}
+              title="Сформировать тезисы статьи"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -214,6 +220,7 @@ export default function Home() {
             <button
               onClick={() => handleAction('telegram')}
               disabled={loading || !url.trim()}
+              title="Создать пост для Telegram на основе статьи"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
                   ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
@@ -226,6 +233,28 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {/* Блок статуса процесса */}
+        {loading && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg shadow-md p-4 mb-6">
+            <div className="flex items-center">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500 mr-3"></div>
+              <span className="text-sm text-blue-700">
+                {activeAction === null
+                  ? 'Загружаю статью…'
+                  : activeAction === 'translate'
+                  ? 'Перевожу статью…'
+                  : activeAction === 'summary'
+                  ? 'Создаю резюме…'
+                  : activeAction === 'thesis'
+                  ? 'Формирую тезисы…'
+                  : activeAction === 'telegram'
+                  ? 'Создаю пост для Telegram…'
+                  : 'Обрабатываю…'}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Блок результата */}
         <div className="bg-white rounded-lg shadow-md p-6">
