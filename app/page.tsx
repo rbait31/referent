@@ -22,7 +22,30 @@ export default function Home() {
   const [parsedArticle, setParsedArticle] = useState<ParseResult | null>(null)
   const [error, setError] = useState<{ type: ErrorType; message: string } | null>(null)
   const [copied, setCopied] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
   const resultRef = useRef<HTMLDivElement>(null)
+
+  // Функция для валидации URL
+  const validateUrl = (urlString: string): boolean => {
+    if (!urlString.trim()) {
+      setUrlError(null)
+      return false
+    }
+
+    try {
+      const url = new URL(urlString.trim())
+      // Проверяем, что протокол http или https
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+        setUrlError('URL должен начинаться с http:// или https://')
+        return false
+      }
+      setUrlError(null)
+      return true
+    } catch (e) {
+      setUrlError('Введите корректный URL (например: https://example.com/article)')
+      return false
+    }
+  }
 
   // Функция для сброса всех состояний
   const handleClear = () => {
@@ -32,6 +55,7 @@ export default function Home() {
     setActiveAction(null)
     setParsedArticle(null)
     setCopied(false)
+    setUrlError(null)
   }
 
   // Функция для копирования результата в буфер обмена
@@ -176,6 +200,12 @@ export default function Home() {
   const handleAction = async (action: ActionType) => {
     if (!url.trim()) {
       setError({ type: null, message: 'Пожалуйста, введите URL статьи' })
+      return
+    }
+
+    // Проверяем валидность URL перед выполнением действия
+    if (!validateUrl(url)) {
+      setError({ type: null, message: urlError || 'Введите корректный URL' })
       return
     }
 
@@ -324,26 +354,34 @@ export default function Home() {
             onChange={(e) => {
               const newUrl = e.target.value
               setUrl(newUrl)
+              // Валидируем URL при изменении
+              validateUrl(newUrl)
               // Очищаем ошибки при изменении URL
               if (error) {
                 setError(null)
               }
             }}
-            onInput={(e) => {
-              const newUrl = (e.target as HTMLInputElement).value
-              setUrl(newUrl)
-              // Очищаем ошибки при изменении URL
-              if (error) {
-                setError(null)
-              }
+            onBlur={(e) => {
+              // Валидируем URL при потере фокуса
+              validateUrl(e.target.value)
             }}
             placeholder="Введите URL статьи, например: https://example.com/article"
-            className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+            className={`w-full px-4 py-3 border rounded-lg focus:ring-2 outline-none transition ${
+              urlError
+                ? 'border-red-300 focus:ring-red-500 focus:border-red-500 bg-red-50'
+                : 'border-gray-300 focus:ring-blue-500 focus:border-blue-500'
+            }`}
             disabled={loading}
           />
-          <p className="mt-2 text-xs text-gray-500">
-            Укажите ссылку на англоязычную статью
-          </p>
+          {urlError ? (
+            <p className="mt-2 text-xs text-red-600">
+              {urlError}
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-gray-500">
+              Укажите ссылку на англоязычную статью
+            </p>
+          )}
         </div>
 
         {/* Кнопки действий */}
@@ -351,7 +389,7 @@ export default function Home() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <button
               onClick={() => handleAction('translate')}
-              disabled={loading || !url.trim()}
+              disabled={loading || !url.trim() || !!urlError}
               title="Перевести статью на русский язык"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
@@ -365,7 +403,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => handleAction('summary')}
-              disabled={loading || !url.trim()}
+              disabled={loading || !url.trim() || !!urlError}
               title="Получить краткое резюме статьи"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
@@ -379,7 +417,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => handleAction('thesis')}
-              disabled={loading || !url.trim()}
+              disabled={loading || !url.trim() || !!urlError}
               title="Сформировать тезисы статьи"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
@@ -393,7 +431,7 @@ export default function Home() {
             </button>
             <button
               onClick={() => handleAction('telegram')}
-              disabled={loading || !url.trim()}
+              disabled={loading || !url.trim() || !!urlError}
               title="Создать пост для Telegram на основе статьи"
               className={`px-6 py-3 rounded-lg font-medium transition-all ${
                 loading || !url.trim()
