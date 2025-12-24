@@ -1,6 +1,8 @@
 'use client'
 
 import { useState } from 'react'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
+import { AlertCircle } from 'lucide-react'
 
 type ActionType = 'summary' | 'thesis' | 'telegram' | 'translate'
 
@@ -10,43 +12,128 @@ interface ParseResult {
   content: string | null
 }
 
+type ErrorType = 'parse' | 'action' | null
+
 export default function Home() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState('')
   const [activeAction, setActiveAction] = useState<ActionType | null>(null)
   const [parsedArticle, setParsedArticle] = useState<ParseResult | null>(null)
+  const [error, setError] = useState<{ type: ErrorType; message: string } | null>(null)
+
+  // Функция для получения дружественного сообщения об ошибке
+  const getErrorMessage = (error: unknown, response?: Response): string => {
+    // Ошибки сети (таймаут, нет соединения и т.п.)
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      return 'Не удалось загрузить статью по этой ссылке.'
+    }
+
+    // Ошибки HTTP
+    if (response) {
+      if (response.status === 404) {
+        return 'Не удалось загрузить статью по этой ссылке.'
+      }
+      if (response.status === 500 || response.status >= 500) {
+        return 'Не удалось загрузить статью по этой ссылке.'
+      }
+      if (response.status === 408 || response.status === 504) {
+        return 'Не удалось загрузить статью по этой ссылке.'
+      }
+    }
+
+    // Ошибки парсинга контента
+    if (error instanceof Error) {
+      if (error.message.includes('извлечь контент') || error.message.includes('content')) {
+        return 'Не удалось извлечь содержимое статьи. Проверьте корректность ссылки.'
+      }
+    }
+
+    // Общая ошибка парсинга
+    return 'Не удалось загрузить статью по этой ссылке.'
+  }
+
+  // Функция для получения дружественного сообщения об ошибке действия
+  const getActionErrorMessage = (action: ActionType, error: unknown, response?: Response): string => {
+    // Ошибки сети
+    if (error instanceof TypeError && error.message.includes('fetch')) {
+      const actionNames: Record<ActionType, string> = {
+        translate: 'перевода',
+        summary: 'создания резюме',
+        thesis: 'формирования тезисов',
+        telegram: 'создания поста для Telegram',
+      }
+      return `Произошла ошибка при ${actionNames[action]}. Попробуйте еще раз.`
+    }
+
+    // Ошибки HTTP
+    if (response) {
+      if (response.status >= 500) {
+        const actionNames: Record<ActionType, string> = {
+          translate: 'перевода',
+          summary: 'создания резюме',
+          thesis: 'формирования тезисов',
+          telegram: 'создания поста для Telegram',
+        }
+        return `Произошла ошибка при ${actionNames[action]}. Попробуйте еще раз.`
+      }
+    }
+
+    // Общая ошибка
+    const actionNames: Record<ActionType, string> = {
+      translate: 'перевода',
+      summary: 'создания резюме',
+      thesis: 'формирования тезисов',
+      telegram: 'создания поста для Telegram',
+    }
+    return `Произошла ошибка при ${actionNames[action]}. Попробуйте еще раз.`
+  }
 
   // Вспомогательная функция для парсинга статьи
   const parseArticle = async (): Promise<ParseResult> => {
-    const parseResponse = await fetch('/api/parse', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url: url.trim() }),
-    })
+    let parseResponse: Response | null = null
+    
+    try {
+      parseResponse = await fetch('/api/parse', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: url.trim() }),
+      })
 
-    if (!parseResponse.ok) {
-      const error = await parseResponse.json()
-      throw new Error(error.error || 'Ошибка при парсинге статьи')
+      if (!parseResponse.ok) {
+        const errorMessage = getErrorMessage(null, parseResponse)
+        throw new Error(errorMessage)
+      }
+
+      const parseData: ParseResult = await parseResponse.json()
+      setParsedArticle(parseData)
+
+      if (!parseData.content) {
+        throw new Error('Не удалось извлечь содержимое статьи. Проверьте корректность ссылки.')
+      }
+
+      return parseData
+    } catch (error) {
+      // Если это уже наша ошибка с дружественным сообщением, пробрасываем её
+      if (error instanceof Error && error.message.includes('Не удалось')) {
+        throw error
+      }
+      // Для других ошибок создаем дружественное сообщение
+      throw new Error(getErrorMessage(error, parseResponse || undefined))
     }
-
-    const parseData: ParseResult = await parseResponse.json()
-    setParsedArticle(parseData)
-
-    if (!parseData.content) {
-      throw new Error('Не удалось извлечь контент статьи')
-    }
-
-    return parseData
   }
 
   const handleAction = async (action: ActionType) => {
     if (!url.trim()) {
-      alert('Пожалуйста, введите URL статьи')
+      setError({ type: null, message: 'Пожалуйста, введите URL статьи' })
       return
     }
+
+    // Очищаем предыдущие ошибки
+    setError(null)
+    setResult('')
 
     // Для всех действий нужен распарсенный контент
     let articleContent = parsedArticle?.content
@@ -55,11 +142,14 @@ export default function Home() {
     // Если статья еще не распарсена, парсим её
     if (!articleContent) {
       setLoading(true)
+      setActiveAction(null)
       try {
         articleData = await parseArticle()
         articleContent = articleData.content
+        setError(null) // Очищаем ошибки при успешном парсинге
       } catch (error) {
-        setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+        const errorMessage = error instanceof Error ? error.message : getErrorMessage(error)
+        setError({ type: 'parse', message: errorMessage })
         setLoading(false)
         return
       }
@@ -68,7 +158,7 @@ export default function Home() {
     // Теперь выполняем нужное действие
     setLoading(true)
     setActiveAction(action)
-    setResult('')
+    setError(null)
 
     try {
       let apiEndpoint = ''
@@ -99,38 +189,51 @@ export default function Home() {
           throw new Error('Неизвестное действие')
       }
 
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      })
+      let response: Response | null = null
+      try {
+        response = await fetch(apiEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        })
 
-      if (!response.ok) {
-        const error = await response.json()
-        throw new Error(error.error || `Ошибка при выполнении действия "${action}"`)
+        if (!response.ok) {
+          const errorMessage = getActionErrorMessage(action, null, response)
+          throw new Error(errorMessage)
+        }
+
+        const data = await response.json()
+
+        // Извлекаем результат в зависимости от типа ответа
+        let resultText = ''
+        if (data.translation) {
+          resultText = data.translation
+        } else if (data.summary) {
+          resultText = data.summary
+        } else if (data.thesis) {
+          resultText = data.thesis
+        } else if (data.post) {
+          resultText = data.post
+        } else {
+          resultText = 'Результат не получен'
+        }
+
+        setResult(resultText)
+        setError(null) // Очищаем ошибки при успехе
+      } catch (fetchError) {
+        // Если это уже наша ошибка с дружественным сообщением, пробрасываем её
+        if (fetchError instanceof Error && fetchError.message.includes('Произошла ошибка')) {
+          throw fetchError
+        }
+        // Для других ошибок создаем дружественное сообщение
+        throw new Error(getActionErrorMessage(action, fetchError, response || undefined))
       }
-
-      const data = await response.json()
-
-      // Извлекаем результат в зависимости от типа ответа
-      let resultText = ''
-      if (data.translation) {
-        resultText = data.translation
-      } else if (data.summary) {
-        resultText = data.summary
-      } else if (data.thesis) {
-        resultText = data.thesis
-      } else if (data.post) {
-        resultText = data.post
-      } else {
-        resultText = 'Результат не получен'
-      }
-
-      setResult(resultText)
     } catch (error) {
-      setResult(`Ошибка: ${error instanceof Error ? error.message : 'Неизвестная ошибка'}`)
+      const errorMessage = error instanceof Error ? error.message : getActionErrorMessage(action, error)
+      setError({ type: 'action', message: errorMessage })
+      setResult('')
     } finally {
       setLoading(false)
     }
@@ -158,10 +261,18 @@ export default function Home() {
             onChange={(e) => {
               const newUrl = e.target.value
               setUrl(newUrl)
+              // Очищаем ошибки при изменении URL
+              if (error) {
+                setError(null)
+              }
             }}
             onInput={(e) => {
               const newUrl = (e.target as HTMLInputElement).value
               setUrl(newUrl)
+              // Очищаем ошибки при изменении URL
+              if (error) {
+                setError(null)
+              }
             }}
             placeholder="Введите URL статьи, например: https://example.com/article"
             className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
@@ -233,6 +344,15 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {/* Блок ошибок */}
+        {error && (
+          <Alert variant="destructive" className="mb-6">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Ошибка</AlertTitle>
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+        )}
 
         {/* Блок статуса процесса */}
         {loading && (
