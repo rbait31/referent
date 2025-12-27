@@ -7,8 +7,12 @@ const MODELS = [
   'Xiaomi/MiMo-V2-Flash:free',
 ]
 
-// Модель Hugging Face для генерации изображений
-const IMAGE_MODEL = 'stabilityai/stable-diffusion-2-1'
+// Модели Hugging Face для генерации изображений (в порядке приоритета)
+const IMAGE_MODELS = [
+  'stabilityai/stable-diffusion-2-1',
+  'runwayml/stable-diffusion-v1-5',
+  'CompVis/stable-diffusion-v1-4',
+]
 
 async function tryGeneratePrompt(
   apiKey: string,
@@ -73,11 +77,12 @@ async function tryGeneratePrompt(
 
 async function generateImage(
   apiKey: string,
-  prompt: string
+  prompt: string,
+  model: string
 ): Promise<{ success: boolean; image?: string; error?: string }> {
   try {
     const response = await fetch(
-      `https://api-inference.huggingface.co/models/${IMAGE_MODEL}`,
+      `https://api-inference.huggingface.co/models/${model}`,
       {
         method: 'POST',
         headers: {
@@ -90,9 +95,15 @@ async function generateImage(
       }
     )
 
+    // Проверяем Content-Type ответа
+    const contentType = response.headers.get('content-type') || ''
+
     if (response.status === 503) {
       // Модель загружается, нужно подождать
-      const errorData = await response.json().catch(() => ({}))
+      let errorData: any = {}
+      if (contentType.includes('application/json')) {
+        errorData = await response.json().catch(() => ({}))
+      }
       const estimatedTime = errorData.estimated_time || 20
       return {
         success: false,
@@ -101,16 +112,45 @@ async function generateImage(
     }
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
+      let errorData: any = {}
+      if (contentType.includes('application/json')) {
+        errorData = await response.json().catch(() => ({}))
+      } else {
+        const text = await response.text().catch(() => '')
+        console.error('Hugging Face API error (text):', text)
+        return {
+          success: false,
+          error: text || `Ошибка API: ${response.statusText} (${response.status})`
+        }
+      }
       console.error('Hugging Face API error:', errorData)
+      const errorMessage = errorData.error || errorData.message || `Ошибка API: ${response.statusText} (${response.status})`
       return {
         success: false,
-        error: errorData.error || `Ошибка API: ${response.statusText}`
+        error: errorMessage
+      }
+    }
+
+    // Проверяем, что ответ действительно изображение
+    if (!contentType.includes('image')) {
+      const text = await response.text().catch(() => '')
+      console.error('Hugging Face returned non-image:', text)
+      return {
+        success: false,
+        error: 'API вернул не изображение. Возможно, модель недоступна.'
       }
     }
 
     // Получаем изображение как blob
     const imageBlob = await response.blob()
+    
+    // Проверяем размер blob
+    if (imageBlob.size === 0) {
+      return {
+        success: false,
+        error: 'Получено пустое изображение'
+      }
+    }
     
     // Конвертируем blob в base64
     const arrayBuffer = await imageBlob.arrayBuffer()
@@ -184,11 +224,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Шаг 2: Генерируем изображение через Hugging Face
-    const imageResult = await generateImage(huggingFaceApiKey, prompt)
+    console.log('Generating image with prompt:', prompt.substring(0, 100) + '...')
+    
+    let imageResult: { success: boolean; image?: string; error?: string } | null = null
+    
+    // Пробуем модели по очереди
+    for (const imageModel of IMAGE_MODELS) {
+      imageResult = await generateImage(huggingFaceApiKey, prompt, imageModel)
+      
+      if (imageResult.success && imageResult.image) {
+        break
+      }
+      
+      // Если это ошибка 503 (модель загружается), пробуем следующую модель
+      if (imageResult.error?.includes('загружается')) {
+        console.log(`Model ${imageModel} is loading, trying next model...`)
+        continue
+      }
+      
+      // Если это другая ошибка, пробуем следующую модель
+      console.log(`Model ${imageModel} failed:`, imageResult.error)
+    }
 
-    if (!imageResult.success || !imageResult.image) {
+    if (!imageResult || !imageResult.success || !imageResult.image) {
+      console.error('Image generation failed for all models:', imageResult?.error)
       return NextResponse.json(
-        { error: imageResult.error || 'Не удалось сгенерировать изображение' },
+        { error: imageResult?.error || 'Не удалось сгенерировать изображение. Все модели недоступны.' },
         { status: 500 }
       )
     }

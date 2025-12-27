@@ -287,7 +287,16 @@ export default function Home() {
         })
 
         if (!response.ok) {
-          const errorMessage = getActionErrorMessage(action, null, response)
+          // Пытаемся получить детальное сообщение об ошибке от API
+          let errorMessage = getActionErrorMessage(action, null, response)
+          try {
+            const errorData = await response.json()
+            if (errorData.error && typeof errorData.error === 'string') {
+              errorMessage = errorData.error
+            }
+          } catch (e) {
+            // Если не удалось распарсить JSON, используем стандартное сообщение
+          }
           throw new Error(errorMessage)
         }
 
