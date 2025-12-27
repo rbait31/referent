@@ -82,7 +82,7 @@ async function generateImage(
 ): Promise<{ success: boolean; image?: string; error?: string }> {
   try {
     const response = await fetch(
-      `https://api-inference.huggingface.co/models/${model}`,
+      `https://router.huggingface.co/v1/models/${model}`,
       {
         method: 'POST',
         headers: {
