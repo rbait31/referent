@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // Список моделей для попыток в порядке приоритета
 const MODELS = [
-  'deepseek/deepseek-r1:free',
-  'deepseek/deepseek-chat:free',
-  'Xiaomi/MiMo-V2-Flash:free',
+  'nvidia/nemotron-3-nano-30b-a3b:free',
 ]
 
 // Модели Hugging Face для генерации изображений (в порядке приоритета)
 const IMAGE_MODELS = [
+  'stabilityai/sdxl',
+  'stabilityai/stable-diffusion-xl-base-1.0',
   'stabilityai/stable-diffusion-2-1',
   'runwayml/stable-diffusion-v1-5',
   'CompVis/stable-diffusion-v1-4',
@@ -81,19 +81,62 @@ async function generateImage(
   model: string
 ): Promise<{ success: boolean; image?: string; error?: string }> {
   try {
-    const response = await fetch(
-      `https://router.huggingface.co/v1/models/${model}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          inputs: prompt,
-        }),
+    // Пробуем несколько вариантов URL
+    const apiUrls = [
+      `https://api-inference.huggingface.co/models/${model}`, // Старый API (может еще работать)
+      `https://router.huggingface.co/models/${model}`, // Новый API
+      `https://hf-inference.huggingface.co/models/${model}`, // Альтернативный формат
+    ]
+    
+    let response: Response | null = null
+    let lastError: string = ''
+    
+    // Пробуем каждый URL по очереди
+    for (const apiUrl of apiUrls) {
+      try {
+        console.log(`Trying API URL: ${apiUrl}`)
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            inputs: prompt,
+          }),
+        })
+        
+        console.log(`Response status from ${apiUrl}: ${response.status}`)
+        
+        // Если получили успешный ответ или ошибку загрузки модели (503), используем его
+        if (response.status === 200 || response.status === 503) {
+          break
+        }
+        
+        // Если получили сообщение о том, что API больше не поддерживается (410 Gone) или 404, пробуем следующий
+        if (response.status === 404 || response.status === 410 || response.status >= 500) {
+          const errorText = await response.text().catch(() => '')
+          if (errorText.includes('no longer supported') || errorText.includes('Not Found') || response.status === 410) {
+            lastError = `URL ${apiUrl} не поддерживается или не найден (${response.status})`
+            continue
+          }
+        }
+        
+        // Для других ошибок тоже пробуем следующий URL
+        lastError = `URL ${apiUrl} вернул статус ${response.status}`
+      } catch (err) {
+        lastError = `Ошибка при запросе к ${apiUrl}: ${err instanceof Error ? err.message : 'Unknown error'}`
+        console.error(lastError)
+        continue
       }
-    )
+    }
+    
+    if (!response) {
+      return {
+        success: false,
+        error: `Не удалось подключиться к API. ${lastError}`
+      }
+    }
 
     // Проверяем Content-Type ответа
     const contentType = response.headers.get('content-type') || ''
