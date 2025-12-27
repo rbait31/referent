@@ -1,0 +1,208 @@
+import { NextRequest, NextResponse } from 'next/server'
+
+// Список моделей для попыток в порядке приоритета
+const MODELS = [
+  'deepseek/deepseek-r1:free',
+  'deepseek/deepseek-chat:free',
+  'Xiaomi/MiMo-V2-Flash:free',
+]
+
+// Модель Hugging Face для генерации изображений
+const IMAGE_MODEL = 'stabilityai/stable-diffusion-2-1'
+
+async function tryGeneratePrompt(
+  apiKey: string,
+  content: string,
+  model: string
+): Promise<{ success: boolean; prompt?: string; error?: string }> {
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [
+          {
+            role: 'user',
+            content: `Создай детальный промпт на английском языке для генерации изображения, которое иллюстрирует эту статью. Промпт должен быть конкретным, описательным и подходящим для генерации изображения через Stable Diffusion. Ответ должен содержать только промпт, без дополнительных объяснений:\n\n${content}`
+          }
+        ],
+      }),
+    })
+
+    if (response.status === 429) {
+      const retryAfter = response.headers.get('Retry-After')
+      const waitTime = retryAfter ? parseInt(retryAfter) * 1000 : 1000
+      return {
+        success: false,
+        error: `Превышен лимит запросов. Попробуйте позже через ${Math.ceil(waitTime / 1000)} секунд.`
+      }
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error(`OpenRouter API error (${model}):`, errorData)
+      return {
+        success: false,
+        error: errorData.error?.message || `Ошибка API: ${response.statusText}`
+      }
+    }
+
+    const data = await response.json()
+    const prompt = data.choices?.[0]?.message?.content?.trim()
+
+    if (!prompt) {
+      return {
+        success: false,
+        error: 'Промпт не получен от API'
+      }
+    }
+
+    return { success: true, prompt }
+  } catch (error) {
+    console.error(`Prompt generation error (${model}):`, error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Ошибка при создании промпта'
+    }
+  }
+}
+
+async function generateImage(
+  apiKey: string,
+  prompt: string
+): Promise<{ success: boolean; image?: string; error?: string }> {
+  try {
+    const response = await fetch(
+      `https://api-inference.huggingface.co/models/${IMAGE_MODEL}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          inputs: prompt,
+        }),
+      }
+    )
+
+    if (response.status === 503) {
+      // Модель загружается, нужно подождать
+      const errorData = await response.json().catch(() => ({}))
+      const estimatedTime = errorData.estimated_time || 20
+      return {
+        success: false,
+        error: `Модель загружается. Подождите примерно ${Math.ceil(estimatedTime)} секунд и попробуйте снова.`
+      }
+    }
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      console.error('Hugging Face API error:', errorData)
+      return {
+        success: false,
+        error: errorData.error || `Ошибка API: ${response.statusText}`
+      }
+    }
+
+    // Получаем изображение как blob
+    const imageBlob = await response.blob()
+    
+    // Конвертируем blob в base64
+    const arrayBuffer = await imageBlob.arrayBuffer()
+    const buffer = Buffer.from(arrayBuffer)
+    const base64Image = buffer.toString('base64')
+    const mimeType = imageBlob.type || 'image/png'
+    const dataUrl = `data:${mimeType};base64,${base64Image}`
+
+    return { success: true, image: dataUrl }
+  } catch (error) {
+    console.error('Image generation error:', error)
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Ошибка при генерации изображения'
+    }
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const { content } = await request.json()
+
+    if (!content || typeof content !== 'string') {
+      return NextResponse.json(
+        { error: 'Content is required' },
+        { status: 400 }
+      )
+    }
+
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY
+    const huggingFaceApiKey = process.env.HUGGINGFACE_API_KEY
+
+    if (!openRouterApiKey) {
+      return NextResponse.json(
+        { error: 'OPENROUTER_API_KEY is not configured' },
+        { status: 500 }
+      )
+    }
+
+    if (!huggingFaceApiKey) {
+      return NextResponse.json(
+        { error: 'HUGGINGFACE_API_KEY is not configured' },
+        { status: 500 }
+      )
+    }
+
+    // Шаг 1: Генерируем промпт через OpenRouter
+    let prompt: string | undefined
+    for (const model of MODELS) {
+      const result = await tryGeneratePrompt(openRouterApiKey, content, model)
+      
+      if (result.success && result.prompt) {
+        prompt = result.prompt
+        break
+      }
+
+      // Если это ошибка 429 (Too Many Requests), не пробуем другие модели
+      if (result.error?.includes('лимит запросов')) {
+        return NextResponse.json(
+          { error: result.error },
+          { status: 429 }
+        )
+      }
+    }
+
+    if (!prompt) {
+      return NextResponse.json(
+        { error: 'Не удалось создать промпт. Все модели недоступны. Попробуйте позже.' },
+        { status: 503 }
+      )
+    }
+
+    // Шаг 2: Генерируем изображение через Hugging Face
+    const imageResult = await generateImage(huggingFaceApiKey, prompt)
+
+    if (!imageResult.success || !imageResult.image) {
+      return NextResponse.json(
+        { error: imageResult.error || 'Не удалось сгенерировать изображение' },
+        { status: 500 }
+      )
+    }
+
+    return NextResponse.json({
+      image: imageResult.image,
+      prompt: prompt,
+    })
+  } catch (error) {
+    console.error('Illustration error:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to generate illustration' },
+      { status: 500 }
+    )
+  }
+}
+

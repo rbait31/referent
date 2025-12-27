@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { AlertCircle, X, Copy, Check } from 'lucide-react'
 
-type ActionType = 'summary' | 'thesis' | 'telegram' | 'translate'
+type ActionType = 'summary' | 'thesis' | 'telegram' | 'translate' | 'illustration'
 
 interface ParseResult {
   date: string | null
@@ -18,6 +18,7 @@ export default function Home() {
   const [url, setUrl] = useState('')
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState('')
+  const [resultImage, setResultImage] = useState<string | null>(null)
   const [activeAction, setActiveAction] = useState<ActionType | null>(null)
   const [parsedArticle, setParsedArticle] = useState<ParseResult | null>(null)
   const [error, setError] = useState<{ type: ErrorType; message: string } | null>(null)
@@ -51,6 +52,7 @@ export default function Home() {
   const handleClear = () => {
     setUrl('')
     setResult('')
+    setResultImage(null)
     setError(null)
     setActiveAction(null)
     setParsedArticle(null)
@@ -134,6 +136,7 @@ export default function Home() {
         summary: 'создания резюме',
         thesis: 'формирования тезисов',
         telegram: 'создания поста для Telegram',
+        illustration: 'генерации иллюстрации',
       }
       return `Произошла ошибка при ${actionNames[action]}. Попробуйте еще раз.`
     }
@@ -146,6 +149,7 @@ export default function Home() {
           summary: 'создания резюме',
           thesis: 'формирования тезисов',
           telegram: 'создания поста для Telegram',
+          illustration: 'генерации иллюстрации',
         }
         return `Произошла ошибка при ${actionNames[action]}. Попробуйте еще раз.`
       }
@@ -157,6 +161,7 @@ export default function Home() {
       summary: 'создания резюме',
       thesis: 'формирования тезисов',
       telegram: 'создания поста для Telegram',
+      illustration: 'генерации иллюстрации',
     }
     return `Произошла ошибка при ${actionNames[action]}. Попробуйте еще раз.`
   }
@@ -212,6 +217,7 @@ export default function Home() {
     // Очищаем предыдущие ошибки
     setError(null)
     setResult('')
+    setResultImage(null)
 
     // Для всех действий нужен распарсенный контент
     let articleContent = parsedArticle?.content
@@ -263,6 +269,9 @@ export default function Home() {
             url: url.trim(),
           }
           break
+        case 'illustration':
+          apiEndpoint = '/api/illustration'
+          break
         default:
           throw new Error('Неизвестное действие')
       }
@@ -285,20 +294,31 @@ export default function Home() {
         const data = await response.json()
 
         // Извлекаем результат в зависимости от типа ответа
-        let resultText = ''
-        if (data.translation) {
-          resultText = data.translation
-        } else if (data.summary) {
-          resultText = data.summary
-        } else if (data.thesis) {
-          resultText = data.thesis
-        } else if (data.post) {
-          resultText = data.post
+        if (action === 'illustration') {
+          // Для иллюстрации сохраняем изображение
+          if (data.image) {
+            setResultImage(data.image)
+            setResult(data.prompt || '')
+          } else {
+            throw new Error('Изображение не получено')
+          }
         } else {
-          resultText = 'Результат не получен'
+          let resultText = ''
+          if (data.translation) {
+            resultText = data.translation
+          } else if (data.summary) {
+            resultText = data.summary
+          } else if (data.thesis) {
+            resultText = data.thesis
+          } else if (data.post) {
+            resultText = data.post
+          } else {
+            resultText = 'Результат не получен'
+          }
+          setResult(resultText)
+          setResultImage(null)
         }
 
-        setResult(resultText)
         setError(null) // Очищаем ошибки при успехе
       } catch (fetchError) {
         // Если это уже наша ошибка с дружественным сообщением, пробрасываем её
@@ -386,7 +406,7 @@ export default function Home() {
 
         {/* Кнопки действий */}
         <div className="bg-white rounded-lg shadow-md p-4 sm:p-6 mb-4 sm:mb-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
             <button
               onClick={() => handleAction('translate')}
               disabled={loading || !url.trim() || !!urlError}
@@ -443,6 +463,20 @@ export default function Home() {
             >
               Пост для Telegram
             </button>
+            <button
+              onClick={() => handleAction('illustration')}
+              disabled={loading || !url.trim() || !!urlError}
+              title="Сгенерировать иллюстрацию на основе статьи"
+              className={`px-6 py-3 rounded-lg font-medium transition-all ${
+                loading || !url.trim()
+                  ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                  : activeAction === 'illustration'
+                  ? 'bg-green-600 text-white shadow-lg'
+                  : 'bg-green-500 text-white hover:bg-green-600 hover:shadow-md'
+              }`}
+            >
+              Иллюстрация
+            </button>
           </div>
         </div>
 
@@ -471,6 +505,8 @@ export default function Home() {
                   ? 'Формирую тезисы…'
                   : activeAction === 'telegram'
                   ? 'Создаю пост для Telegram…'
+                  : activeAction === 'illustration'
+                  ? 'Генерирую иллюстрацию…'
                   : 'Обрабатываю…'}
               </span>
             </div>
@@ -483,7 +519,7 @@ export default function Home() {
             <h2 className="text-lg sm:text-xl font-semibold text-gray-900">
               Результат
             </h2>
-            {result && !loading && (
+            {result && !loading && activeAction !== 'illustration' && (
               <button
                 onClick={handleCopy}
                 title="Копировать результат"
@@ -508,6 +544,19 @@ export default function Home() {
               <div className="flex flex-col sm:flex-row items-center justify-center h-full gap-3 sm:gap-4">
                 <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-blue-500"></div>
                 <span className="text-sm sm:text-base text-gray-600">Генерация результата...</span>
+              </div>
+            ) : activeAction === 'illustration' && resultImage ? (
+              <div className="flex flex-col gap-4">
+                <img 
+                  src={resultImage} 
+                  alt="Сгенерированная иллюстрация" 
+                  className="max-w-full h-auto rounded-lg shadow-md mx-auto"
+                />
+                {result && (
+                  <div className="text-xs text-gray-500 bg-gray-100 p-2 rounded">
+                    <strong>Промпт:</strong> {result}
+                  </div>
+                )}
               </div>
             ) : result ? (
               <div className="text-gray-800 whitespace-pre-wrap font-mono text-xs sm:text-sm overflow-x-auto break-words max-h-[500px]">{result}</div>
