@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { HfInference } from '@huggingface/inference'
 
 // Список моделей для попыток в порядке приоритета
+// Используем только рабочие бесплатные модели
 const MODELS = [
   'nvidia/nemotron-3-nano-30b-a3b:free',
+  'mistralai/mistral-7b-instruct:free',
+  'google/gemini-flash-1.5:free',
 ]
 
-// Модели Hugging Face для генерации изображений (в порядке приоритета)
+// Модели Hugging Face для генерации изображений
 const IMAGE_MODELS = [
-  'stabilityai/sdxl',
   'stabilityai/stable-diffusion-xl-base-1.0',
+  'stabilityai/sdxl',
   'stabilityai/stable-diffusion-2-1',
-  'runwayml/stable-diffusion-v1-5',
-  'CompVis/stable-diffusion-v1-4',
 ]
 
 async function tryGeneratePrompt(
@@ -81,133 +83,54 @@ async function generateImage(
   model: string
 ): Promise<{ success: boolean; image?: string; error?: string }> {
   try {
-    // Пробуем несколько вариантов URL
-    const apiUrls = [
-      `https://api-inference.huggingface.co/models/${model}`, // Старый API (может еще работать)
-      `https://router.huggingface.co/models/${model}`, // Новый API
-      `https://hf-inference.huggingface.co/models/${model}`, // Альтернативный формат
-    ]
+    // Используем официальный Inference Client от HuggingFace
+    // Он автоматически выбирает нужного провайдера (fal, replicate, stability, bfl)
+    const hf = new HfInference(apiKey)
     
-    let response: Response | null = null
-    let lastError: string = ''
+    console.log(`Generating image with model: ${model}`)
     
-    // Пробуем каждый URL по очереди
-    for (const apiUrl of apiUrls) {
-      try {
-        console.log(`Trying API URL: ${apiUrl}`)
-        response = await fetch(apiUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            inputs: prompt,
-          }),
-        })
-        
-        console.log(`Response status from ${apiUrl}: ${response.status}`)
-        
-        // Если получили успешный ответ или ошибку загрузки модели (503), используем его
-        if (response.status === 200 || response.status === 503) {
-          break
-        }
-        
-        // Если получили сообщение о том, что API больше не поддерживается (410 Gone) или 404, пробуем следующий
-        if (response.status === 404 || response.status === 410 || response.status >= 500) {
-          const errorText = await response.text().catch(() => '')
-          if (errorText.includes('no longer supported') || errorText.includes('Not Found') || response.status === 410) {
-            lastError = `URL ${apiUrl} не поддерживается или не найден (${response.status})`
-            continue
-          }
-        }
-        
-        // Для других ошибок тоже пробуем следующий URL
-        lastError = `URL ${apiUrl} вернул статус ${response.status}`
-      } catch (err) {
-        lastError = `Ошибка при запросе к ${apiUrl}: ${err instanceof Error ? err.message : 'Unknown error'}`
-        console.error(lastError)
-        continue
-      }
-    }
-    
-    if (!response) {
-      return {
-        success: false,
-        error: `Не удалось подключиться к API. ${lastError}`
-      }
-    }
-
-    // Проверяем Content-Type ответа
-    const contentType = response.headers.get('content-type') || ''
-
-    if (response.status === 503) {
-      // Модель загружается, нужно подождать
-      let errorData: any = {}
-      if (contentType.includes('application/json')) {
-        errorData = await response.json().catch(() => ({}))
-      }
-      const estimatedTime = errorData.estimated_time || 20
-      return {
-        success: false,
-        error: `Модель загружается. Подождите примерно ${Math.ceil(estimatedTime)} секунд и попробуйте снова.`
-      }
-    }
-
-    if (!response.ok) {
-      let errorData: any = {}
-      if (contentType.includes('application/json')) {
-        errorData = await response.json().catch(() => ({}))
-      } else {
-        const text = await response.text().catch(() => '')
-        console.error('Hugging Face API error (text):', text)
-        return {
-          success: false,
-          error: text || `Ошибка API: ${response.statusText} (${response.status})`
-        }
-      }
-      console.error('Hugging Face API error:', errorData)
-      const errorMessage = errorData.error || errorData.message || `Ошибка API: ${response.statusText} (${response.status})`
-      return {
-        success: false,
-        error: errorMessage
-      }
-    }
-
-    // Проверяем, что ответ действительно изображение
-    if (!contentType.includes('image')) {
-      const text = await response.text().catch(() => '')
-      console.error('Hugging Face returned non-image:', text)
-      return {
-        success: false,
-        error: 'API вернул не изображение. Возможно, модель недоступна.'
-      }
-    }
-
-    // Получаем изображение как blob
-    const imageBlob = await response.blob()
+    // Используем метод textToImage из Inference SDK
+    const imageBlob = await hf.textToImage({
+      model: model,
+      inputs: prompt,
+    })
     
     // Проверяем размер blob
-    if (imageBlob.size === 0) {
+    const arrayBuffer = await imageBlob.arrayBuffer()
+    if (arrayBuffer.byteLength === 0) {
       return {
         success: false,
         error: 'Получено пустое изображение'
       }
     }
     
-    // Конвертируем blob в base64
-    const arrayBuffer = await imageBlob.arrayBuffer()
+    // Конвертируем в base64
     const buffer = Buffer.from(arrayBuffer)
     const base64Image = buffer.toString('base64')
-    const mimeType = imageBlob.type || 'image/png'
-    const dataUrl = `data:${mimeType};base64,${base64Image}`
+    const dataUrl = `data:image/png;base64,${base64Image}`
 
     return { success: true, image: dataUrl }
-  } catch (error) {
+  } catch (error: any) {
     console.error('Image generation error:', error)
+    
+    // Обрабатываем специфичные ошибки
+    if (error?.status === 401) {
+      return {
+        success: false,
+        error: 'Неверный или отсутствующий API токен. Проверьте HUGGINGFACE_API_KEY в .env.local'
+      }
+    }
+    
+    if (error?.status === 403 || error?.message?.includes('billing') || error?.message?.includes('paid')) {
+      return {
+        success: false,
+        error: 'Модель требует платный план Hugging Face (Inference plan) или подключенный billing'
+      }
+    }
+    
     return {
       success: false,
-      error: error instanceof Error ? error.message : 'Ошибка при генерации изображения'
+      error: error?.message || 'Ошибка при генерации изображения'
     }
   }
 }
@@ -279,10 +202,9 @@ export async function POST(request: NextRequest) {
         break
       }
       
-      // Если это ошибка 503 (модель загружается), пробуем следующую модель
-      if (imageResult.error?.includes('загружается')) {
-        console.log(`Model ${imageModel} is loading, trying next model...`)
-        continue
+      // Если это критическая ошибка (401, 403), не пробуем другие модели
+      if (imageResult.error?.includes('неверный') || imageResult.error?.includes('платный план')) {
+        break
       }
       
       // Если это другая ошибка, пробуем следующую модель
