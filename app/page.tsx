@@ -556,6 +556,7 @@ export default function Home() {
               </div>
             ) : activeAction === 'illustration' && resultImage ? (
               <div className="flex flex-col gap-4">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img 
                   src={resultImage} 
                   alt="Сгенерированная иллюстрация" 

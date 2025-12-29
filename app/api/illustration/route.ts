@@ -90,24 +90,64 @@ async function generateImage(
     console.log(`Generating image with model: ${model}`)
     
     // Используем метод textToImage из Inference SDK
-    const imageBlob = await hf.textToImage({
+    const imageResult: unknown = await hf.textToImage({
       model: model,
       inputs: prompt,
     })
     
-    // Проверяем размер blob
-    const arrayBuffer = await imageBlob.arrayBuffer()
-    if (arrayBuffer.byteLength === 0) {
-      return {
-        success: false,
-        error: 'Получено пустое изображение'
+    // Обрабатываем результат в зависимости от типа
+    let dataUrl: string
+    
+    // Проверяем, является ли результат строкой
+    if (typeof imageResult === 'string') {
+      // Если результат уже строка (base64 или URL)
+      if (imageResult.startsWith('data:')) {
+        dataUrl = imageResult
+      } else if (imageResult.startsWith('http://') || imageResult.startsWith('https://')) {
+        // Если это URL, загружаем изображение
+        const response = await fetch(imageResult)
+        const blob = await response.blob()
+        const arrayBuffer = await blob.arrayBuffer()
+        const buffer = Buffer.from(arrayBuffer)
+        const base64Image = buffer.toString('base64')
+        dataUrl = `data:image/png;base64,${base64Image}`
+      } else {
+        // Предполагаем, что это base64 без префикса
+        dataUrl = `data:image/png;base64,${imageResult}`
+      }
+    } else {
+      // Обрабатываем как Blob или объект с методом arrayBuffer
+      try {
+        let arrayBuffer: ArrayBuffer
+        
+        if (imageResult instanceof Blob) {
+          arrayBuffer = await imageResult.arrayBuffer()
+        } else if (imageResult && typeof imageResult === 'object' && 'arrayBuffer' in imageResult && typeof (imageResult as any).arrayBuffer === 'function') {
+          arrayBuffer = await (imageResult as any).arrayBuffer()
+        } else {
+          return {
+            success: false,
+            error: 'Неожиданный тип результата генерации изображения'
+          }
+        }
+        
+        if (arrayBuffer.byteLength === 0) {
+          return {
+            success: false,
+            error: 'Получено пустое изображение'
+          }
+        }
+        
+        const buffer = Buffer.from(arrayBuffer)
+        const base64Image = buffer.toString('base64')
+        dataUrl = `data:image/png;base64,${base64Image}`
+      } catch (e) {
+        return {
+          success: false,
+          error: 'Не удалось обработать результат генерации изображения'
+        }
       }
     }
-    
-    // Конвертируем в base64
-    const buffer = Buffer.from(arrayBuffer)
-    const base64Image = buffer.toString('base64')
-    const dataUrl = `data:image/png;base64,${base64Image}`
 
     return { success: true, image: dataUrl }
   } catch (error: any) {
